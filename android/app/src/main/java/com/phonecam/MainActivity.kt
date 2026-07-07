@@ -134,9 +134,14 @@ class MainActivity : AppCompatActivity() {
             val url = result.data?.getStringExtra("ws_url") ?: return@registerForActivityResult
             if (url.isNotEmpty()) {
                 userDisconnected = false
-                // Camera rebind is handled in onResume() — it fires before this
-                // callback, so the preview is already live by the time we connect.
                 connectToDesktop(url)
+                // QRScanActivity.onDestroy() runs AFTER this callback (Activity
+                // lifecycle: QRScan.onPause → MainActivity.onResume → this callback
+                // → QRScan.onStop → QRScan.onDestroy). Its cameraController.unbind()
+                // hasn't released the camera yet, so an immediate rebind fails
+                // silently and the preview stays black until the user taps Flip.
+                // Delay the rebind so the camera is actually free by then.
+                binding.cameraPreview.postDelayed({ restartCamera() }, 400)
             }
         }
     }
