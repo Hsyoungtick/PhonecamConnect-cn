@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">PhoneCam</string>
+
+    <!-- 连接界面 -->
+    <string name="btn_scan_qr">📷  扫描二维码</string>
+    <string name="hint_manual_url">ws://192.168.x.x:7779  或  http://192.168.x.x:7780</string>
+    <string name="btn_connect">连接</string>
+    <string name="or_manual">或手动输入地址</string>
+
+    <!-- 推流界面 -->
+    <string name="btn_flip">🔄 翻转</string>
+    <string name="btn_torch">🔦 闪光灯</string>
+    <string name="btn_disconnect">断开连接</string>
+
+    <!-- 状态标签 -->
+    <string name="status_live">● 直播</string>
+    <string name="status_offline">○ 离线</string>
+    <string name="status_connecting">🔄 连接中…</string>
+    <string name="status_connected">已连接 — 推流中</string>
+    <string name="status_streaming">🟢 推流中</string>
+    <string name="status_reconnecting">🔄 已断开 — 重试中…</string>
+    <string name="status_no_wifi">📶 无 WiFi</string>
+
+    <!-- 二维码扫描 -->
+    <string name="qr_instruction">对准电脑端的二维码</string>
+    <string name="btn_back">← 返回</string>
+
+    <!-- 错误提示 -->
+    <string name="err_camera_permission">需要相机权限</string>
+    <string name="err_empty_url">请输入地址，例如 ws://192.168.1.42:7779</string>
+    <string name="err_invalid_url">地址必须以 ws://、wss:// 或 http:// 开头</string>
+    <string name="err_camera_bind">相机错误：%1$s</string>
+    <string name="err_invalid_uri">无效地址</string>
+    <string name="err_connection">连接错误：%1$s</string>
+
+    <!-- Toast 消息 -->
+    <string name="toast_streaming_active">正在推流到电脑 ✓</string>
+
+    <!-- 通知：推流服务 -->
+    <string name="notif_title_starting">推流中…</string>
+    <string name="notif_content_active">PhoneCam 正在运行</string>
+    <string name="notif_title_streaming">正在推流到电脑</string>
+    <string name="notif_content_streaming">%1$s @ %2$dfps  •  点击打开</string>
+    <string name="notif_action_stop">停止</string>
+    <string name="notif_channel_name">相机推流</string>
+    <string name="notif_channel_desc">PhoneCam 推流时显示的通知</string>
+</resources>

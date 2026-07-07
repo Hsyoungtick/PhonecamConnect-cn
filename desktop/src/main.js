@@ -45,6 +45,64 @@ const QRCode  = require('qrcode');
 // ── Native driver pipe (Windows only — safe no-op on Linux/macOS) ─────────────
 const vcamPipe = require('./vcam-pipe');
 
+// ── User Config Persistence ──────────────────────────────────────────────────
+const CONFIG_PATH = path.join(app.getPath('userData'), 'config.json');
+
+// Detect default language based on system locale
+function detectSystemLanguage() {
+  try {
+    const locale = app.getLocale();
+    return (locale && locale.startsWith('zh')) ? 'zh-CN' : 'en';
+  } catch (_) {
+    return 'en';
+  }
+}
+
+let _appConfig = null;
+
+function loadConfig() {
+  // Use system language as default on first call
+  if (!_appConfig) {
+    _appConfig = { language: detectSystemLanguage() };
+  }
+  try {
+    if (fs.existsSync(CONFIG_PATH)) {
+      _appConfig = { ..._appConfig, ...JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8')) };
+    }
+  } catch (e) {
+    console.warn('[Config] Config read failed, using defaults:', e.message);
+  }
+  return _appConfig;
+}
+
+function saveConfig(updates) {
+  _appConfig = { ..._appConfig, ...updates };
+  try {
+    fs.writeFileSync(CONFIG_PATH, JSON.stringify(_appConfig, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('[Config] Config save failed:', e.message);
+  }
+  return _appConfig;
+}
+
+// Language switching: inject i18n script based on config ──────────────────
+function applyI18nToWindow(win) {
+  if (!win || win.isDestroyed()) return;
+  const lang = _appConfig?.language || detectSystemLanguage();
+  if (lang === 'zh-CN') {
+    try {
+      const i18nPath = path.join(__dirname, 'i18n-zh-CN.js');
+      if (fs.existsSync(i18nPath)) {
+        const i18nScript = fs.readFileSync(i18nPath, 'utf8');
+        win.webContents.executeJavaScript(i18nScript)
+          .catch(e => console.warn('[i18n] i18n script injection failed:', e.message));
+      }
+    } catch (e) {
+      console.warn('[i18n] i18n script loading failed:', e.message);
+    }
+  }
+}
+
 // ── Global crash protection ───────────────────────────────────────────────────
 process.on('uncaughtException', (err) => {
   const msg  = err.message || '';
@@ -171,8 +229,30 @@ function createWindow() {
     mainWindow.show();
     if (isDev) mainWindow.webContents.openDevTools();
   });
+
+  // ── Mount-style i18n injection (conditional on user language config) ────────
+  mainWindow.webContents.on('dom-ready', () => {
+    loadConfig(); // Load language config on startup
+    applyI18nToWindow(mainWindow);
+  });
+
   mainWindow.on('close', () => { app.isQuitting = true; app.quit(); });
   return mainWindow;
+}
+
+// ── Tray Menu Translation ───────────────────────────────────────────────────
+// Tray runs in main process, can't use renderer's i18n script, needs separate translation map
+const TRAY_TRANSLATIONS = {
+  'No phones connected': '暂无手机连接',
+  'Open Dashboard': '打开仪表盘',
+  'Native driver active': '原生驱动已启用',
+  'MJPEG stream active': 'MJPEG 推流已启用',
+  'Virtual webcam off': '虚拟摄像头已关闭',
+  'Exit PhoneCam': '退出 PhoneCam',
+};
+function trayT(key) {
+  const lang = _appConfig?.language || detectSystemLanguage();
+  return (lang === 'zh-CN' && TRAY_TRANSLATIONS[key]) ? TRAY_TRANSLATIONS[key] : key;
 }
 
 // ─── System Tray ────────────────────────────────────────────────────────────
@@ -184,18 +264,18 @@ function createTray() {
     const phoneList = [...connectedPhones.values()].map(p =>
       ({ label: `📱 ${p.deviceName} — ${p.resolution} @ ${p.fps}fps`, enabled: false }));
     const driverStr = vcamPipe.isDriverConnected()
-      ? '✅ Native Driver Active'
-      : virtualWebcamActive ? '✅ MJPEG Stream Active' : '⚫ Virtual Webcam Off';
+      ? '✅ ' + trayT('Native driver active')
+      : virtualWebcamActive ? '✅ ' + trayT('MJPEG stream active') : '⚫ ' + trayT('Virtual webcam off');
 
     tray.setContextMenu(Menu.buildFromTemplate([
       { label: 'PhoneCam Connect', enabled: false },
       { type: 'separator' },
-      ...(phoneList.length ? phoneList : [{ label: 'No phones connected', enabled: false }]),
+      ...(phoneList.length ? phoneList : [{ label: trayT('No phones connected'), enabled: false }]),
       { type: 'separator' },
-      { label: 'Open Dashboard', click: () => { mainWindow.show(); mainWindow.focus(); } },
+      { label: trayT('Open Dashboard'), click: () => { mainWindow.show(); mainWindow.focus(); } },
       { label: driverStr, enabled: false },
       { type: 'separator' },
-      { label: 'Quit PhoneCam', click: () => app.quit() },
+      { label: trayT('Exit PhoneCam'), click: () => app.quit() },
     ]));
   };
 
@@ -1156,6 +1236,16 @@ function registerIPC() {
   ipcMain.on('window-maximize', () => mainWindow?.isMaximized() ? mainWindow.unmaximize() : mainWindow.maximize());
   ipcMain.on('window-close',    () => app.quit());
   ipcMain.on('window-hide',     () => mainWindow?.hide());
+
+  // ── Language Settings ─────────────────────────────────────────────────────
+  ipcMain.handle('get-language', () => _appConfig?.language || detectSystemLanguage());
+  ipcMain.handle('set-language', (_, lang) => {
+    if (!_appConfig) _appConfig = { language: detectSystemLanguage() };
+    saveConfig({ language: lang });
+    global.updateTrayMenu?.();
+    mainWindow?.webContents?.reload(); // reload to apply language (dom-ready injects if zh-CN)
+    return _appConfig.language;
+  });
 
   // App info — includes driver status for UI
   ipcMain.handle('get-app-info', () => ({

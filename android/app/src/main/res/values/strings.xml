@@ -17,6 +17,7 @@
     <string name="status_live">● LIVE</string>
     <string name="status_offline">○ Offline</string>
     <string name="status_connecting">🔄 Connecting…</string>
+    <string name="status_connected">Connected — streaming</string>
     <string name="status_streaming">🟢 Streaming</string>
     <string name="status_reconnecting">🔄 Lost — retrying…</string>
     <string name="status_no_wifi">📶 No WiFi</string>
@@ -26,7 +27,22 @@
     <string name="btn_back">← Back</string>
 
     <!-- Errors -->
-    <string name="err_camera_permission">Camera permission is required</string>
-    <string name="err_empty_url">Enter a URL, e.g. ws://192.168.1.42:7779</string>
+    <string name="err_camera_permission">Camera permission is required to stream</string>
+    <string name="err_empty_url">Enter a URL — e.g. ws://192.168.1.42:7779</string>
     <string name="err_invalid_url">URL must start with ws://, wss://, or http://</string>
+    <string name="err_camera_bind">Camera error: %1$s</string>
+    <string name="err_invalid_uri">Invalid URL</string>
+    <string name="err_connection">Connection error: %1$s</string>
+
+    <!-- Toast messages -->
+    <string name="toast_streaming_active">Streaming to desktop ✓</string>
+
+    <!-- Notification: streaming service -->
+    <string name="notif_title_starting">Streaming…</string>
+    <string name="notif_content_active">PhoneCam is active</string>
+    <string name="notif_title_streaming">Streaming to PC</string>
+    <string name="notif_content_streaming">%1$s @ %2$dfps  •  Tap to open</string>
+    <string name="notif_action_stop">Stop</string>
+    <string name="notif_channel_name">Camera Streaming</string>
+    <string name="notif_channel_desc">Shows while PhoneCam is actively streaming</string>
 </resources>

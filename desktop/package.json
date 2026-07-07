@@ -90,5 +90,8 @@
     "compression": "maximum"
   },
   "keywords": [],
-  "type": "commonjs"
+  "type": "commonjs",
+  "pnpm": {
+    "onlyBuiltDependencies": ["electron"]
+  }
 }

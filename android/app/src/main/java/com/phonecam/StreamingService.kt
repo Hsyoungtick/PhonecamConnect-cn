@@ -44,7 +44,7 @@ class StreamingService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        startForeground(NOTIFICATION_ID, buildNotification("Streaming…", "PhoneCam is active"))
+        startForeground(NOTIFICATION_ID, buildNotification(getString(R.string.notif_title_starting), getString(R.string.notif_content_active)))
         return START_STICKY
     }
 
@@ -52,7 +52,7 @@ class StreamingService : Service() {
     fun updateNotification(deviceName: String, resolution: String, fps: Int) {
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         nm.notify(NOTIFICATION_ID,
-            buildNotification("Streaming to PC", "$resolution @ ${fps}fps  •  Tap to open"))
+            buildNotification(getString(R.string.notif_title_streaming), getString(R.string.notif_content_streaming, resolution, fps)))
     }
 
     private fun buildNotification(title: String, content: String): Notification {
@@ -77,17 +77,17 @@ class StreamingService : Service() {
             .setOngoing(true)
             .setSilent(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
-            .addAction(R.drawable.ic_stop, "Stop", stopIntent)
+            .addAction(R.drawable.ic_stop, getString(R.string.notif_action_stop), stopIntent)
             .build()
     }
 
     private fun createNotificationChannel() {
         val channel = NotificationChannel(
             CHANNEL_ID,
-            "Camera Streaming",
+            getString(R.string.notif_channel_name),
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Shows while PhoneCam is actively streaming"
+            description = getString(R.string.notif_channel_desc)
             setShowBadge(false)
             enableVibration(false)
             enableLights(false)

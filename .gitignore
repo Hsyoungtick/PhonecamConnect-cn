@@ -1,13 +1,19 @@
 # Desktop (Electron)
 desktop/node_modules/
 desktop/dist/
+desktop/pnpm-lock.yaml
 
 # Android
 android/build/
 android/app/build/
 android/local.properties
+android/.kotlin/
 *.apk
 *.aab
+# 签名密钥（私密文件，禁止提交到仓库）
+*.keystore
+*.jks
+keystore.properties
 
 # Driver
 driver/build/
@@ -19,3 +25,5 @@ Thumbs.db
 .idea/
 *.iml
 .vscode/
+# JVM crash logs
+hs_err_pid*.log

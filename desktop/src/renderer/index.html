@@ -1516,6 +1516,13 @@ svg { display: block; flex-shrink: 0; }
               <div><div class="settings-row-label">Auto-start virtual webcam</div><div class="settings-row-sub">Activate virtual camera when a phone connects</div></div>
               <label class="toggle"><input type="checkbox"><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
             </div>
+            <div class="settings-row">
+              <div><div class="settings-row-label">Language</div><div class="settings-row-sub">Change interface language</div></div>
+              <select id="lang-select" class="select-field">
+                <option value="en">English</option>
+                <option value="zh-CN">中文</option>
+              </select>
+            </div>
           </div>
           <div class="settings-panel card" id="spanel-video">
             <div class="settings-row">
@@ -1916,6 +1923,21 @@ document.querySelectorAll('.settings-nav-item').forEach(item => {
     item.classList.add('active');
     document.getElementById(`spanel-${panel}`)?.classList.add('active');
   });
+});
+
+// ── Language Switching ────────────────────────────────────────────────────
+(async () => {
+  try {
+    const lang = await window.phonecam.getLanguage();
+    const sel = document.getElementById('lang-select');
+    if (sel) sel.value = lang;
+  } catch (_) {}
+})();
+document.getElementById('lang-select')?.addEventListener('change', async function () {
+  try {
+    await window.phonecam.setLanguage(this.value);
+    // reload handled by main process
+  } catch (_) {}
 });
 
 // ─── Toast System ─────────────────────────────────────────────────────────

@@ -26,6 +26,7 @@ const INVOKE_CHANNELS = new Set([
   'phone-command', 'phone-disconnect',
   'setup-get-status', 'setup-run-step',
   'save-dialog',
+  'get-language', 'set-language',
 ]);
 
 const LISTEN_CHANNELS = new Set([
@@ -85,6 +86,10 @@ contextBridge.exposeInMainWorld('phonecam', {
   // ── Setup Wizard ──────────────────────────────────────────────────────────
   setupGetStatus: ()            => ipcRenderer.invoke('setup-get-status'),
   setupRunStep:   (stepId, cmd) => ipcRenderer.invoke('setup-run-step', { stepId, installCmd: cmd }),
+
+  // ── Language ──────────────────────────────────────────────────────────────
+  getLanguage: ()            => ipcRenderer.invoke('get-language'),
+  setLanguage: (lang)        => ipcRenderer.invoke('set-language', lang),
 
   // ── Events (typed subscriptions — no raw channel access) ─────────────────
   onVideoFrame:           (cb) => ipcRenderer.on('video-frame',            (_, d) => cb(d)),

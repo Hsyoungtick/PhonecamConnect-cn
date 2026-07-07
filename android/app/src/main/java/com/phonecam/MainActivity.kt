@@ -21,6 +21,7 @@ import android.os.PowerManager
 import android.util.Log
 import android.util.Size
 import android.view.View
+import android.widget.ArrayAdapter
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -122,7 +123,7 @@ class MainActivity : AppCompatActivity() {
         if (permissions[Manifest.permission.CAMERA] == true) {
             startCamera()
         } else {
-            showError("Camera permission is required to stream")
+            showError(getString(R.string.err_camera_permission))
         }
     }
 
@@ -134,6 +135,13 @@ class MainActivity : AppCompatActivity() {
             if (url.isNotEmpty()) {
                 userDisconnected = false
                 connectToDesktop(url)
+                // QRScanActivity.onDestroy() runs AFTER this callback (Activity
+                // lifecycle: QRScan.onPause → MainActivity.onResume → this callback
+                // → QRScan.onStop → QRScan.onDestroy). Its cameraController.unbind()
+                // hasn't released the camera yet, so an immediate rebind fails
+                // silently and the preview stays black until the user taps Flip.
+                // Delay the rebind so the camera is actually free by then.
+                binding.cameraPreview.postDelayed({ restartCamera() }, 400)
             }
         }
     }
@@ -152,6 +160,19 @@ class MainActivity : AppCompatActivity() {
         setupUI()
         requestAllPermissions()
         registerNetworkCallback()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Rebind the camera whenever MainActivity returns to the foreground.
+        // QRScanActivity calls cameraProvider.unbindAll() which clears ALL
+        // bindings (including ours); those bindings are NOT automatically
+        // restored when QRScanActivity finishes, so the preview stays black
+        // until the user manually taps Flip. Rebinding here covers that case
+        // as well as any other scenario where the camera was unbound.
+        if (hasPerm(Manifest.permission.CAMERA)) {
+            restartCamera()
+        }
     }
 
     override fun onDestroy() {
@@ -215,12 +236,12 @@ class MainActivity : AppCompatActivity() {
         binding.btnManualConnect.setOnClickListener {
             val raw = binding.etManualUrl.text.toString().trim()
             if (raw.isEmpty()) {
-                showError("Enter a URL — e.g. ws://192.168.1.42:7779")
+                showError(getString(R.string.err_empty_url))
                 return@setOnClickListener
             }
             val url = normalizeWsUrl(raw)
             if (url == null) {
-                showError("URL must start with ws://, wss://, or http://")
+                showError(getString(R.string.err_invalid_url))
                 return@setOnClickListener
             }
             userDisconnected = false
@@ -249,6 +270,17 @@ class MainActivity : AppCompatActivity() {
             camera?.cameraControl?.enableTorch(isTorchOn)
             binding.btnTorch.alpha = if (isTorchOn) 1f else 0.5f
         }
+
+        // Use a custom white-text adapter so the selected resolution is readable
+        // on the dark #1E1C18 spinner background. The default simple_spinner_item
+        // uses ?textColorPrimary which renders black in light-mode systems.
+        val resolutionAdapter = ArrayAdapter.createFromResource(
+            this,
+            R.array.resolutions,
+            R.layout.spinner_item_white
+        )
+        resolutionAdapter.setDropDownViewResource(R.layout.spinner_dropdown_item_white)
+        binding.spinnerResolution.adapter = resolutionAdapter
 
         var spinnerReady = false
         binding.spinnerResolution.setOnItemSelectedListener { _, _, _, _ ->
@@ -329,7 +361,7 @@ class MainActivity : AppCompatActivity() {
             camera = cameraProvider.bindToLifecycle(this, selector, preview, imageAnalysis)
         } catch (e: Exception) {
             Log.e(TAG, "Camera bind failed: ${e.message}")
-            showError("Camera error: ${e.message}")
+            showError(getString(R.string.err_camera_bind, e.message))
         }
     }
 
@@ -368,24 +400,72 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Convert an [ImageProxy] (YUV_420_888) to JPEG bytes via NV21.
+     *
+     * The original implementation copied the Y, V, and U planes sequentially
+     * into a single byte array, which does NOT produce valid NV21 — NV21
+     * requires interleaved V/U pairs (V0 U0 V1 U1 ...). It also ignored
+     * [androidx.camera.core.ImageProxy.PlaneProxy.getRowStride] and
+     * [androidx.camera.core.ImageProxy.PlaneProxy.getPixelStride], causing
+     * garbled output (green stripes) on cameras whose chroma planes use
+     * a semi-planar layout (pixelStride = 2) — typically the back camera.
+     *
+     * This fix:
+     *   1. Copies the Y plane row-by-row when rowStride > width (padding).
+     *   2. Interleaves V and U correctly using each plane's pixelStride and
+     *      buffer offset, so both semi-planar (NV21/NV12) and fully planar
+     *      (I420) layouts are handled.
+     */
     private fun yuvToJpeg(image: ImageProxy): ByteArray {
+        val width = image.width
+        val height = image.height
         val planes = image.planes
-        val yBuffer = planes[0].buffer
-        val uBuffer = planes[1].buffer
-        val vBuffer = planes[2].buffer
 
-        val ySize = yBuffer.remaining()
-        val uSize = uBuffer.remaining()
-        val vSize = vBuffer.remaining()
+        // NV21 layout: Y plane (w*h) + interleaved VU pairs (w*h/2)
+        val nv21 = ByteArray(width * height * 3 / 2)
 
-        val nv21 = ByteArray(ySize + uSize + vSize)
-        yBuffer.get(nv21, 0, ySize)
-        vBuffer.get(nv21, ySize, vSize)
-        uBuffer.get(nv21, ySize + vSize, uSize)
+        // --- Y plane: copy with row-stride padding handling ---
+        val yBuf = planes[0].buffer.duplicate()
+        val yRowStride = planes[0].rowStride
+        if (yRowStride == width) {
+            yBuf.get(nv21, 0, width * height)
+        } else {
+            var dst = 0
+            for (row in 0 until height) {
+                yBuf.position(row * yRowStride)
+                yBuf.get(nv21, dst, width)
+                dst += width
+            }
+        }
+
+        // --- Chroma planes: interleave V and U into NV21 (V0 U0 V1 U1 ...) ---
+        // Works for semi-planar (pixelStride = 2, NV21/NV12) and planar
+        // (pixelStride = 1, I420) by preserving each plane's buffer offset.
+        val uBuf = planes[1].buffer.duplicate()
+        val vBuf = planes[2].buffer.duplicate()
+        val uStart = uBuf.position()
+        val vStart = vBuf.position()
+        val uvRowStride = planes[1].rowStride
+        val uvPixelStride = planes[1].pixelStride
+        val halfW = width / 2
+        val halfH = height / 2
+        var dst = width * height
+
+        for (row in 0 until halfH) {
+            val rowStart = row * uvRowStride
+            for (col in 0 until halfW) {
+                val offset = rowStart + col * uvPixelStride
+                vBuf.position(vStart + offset)
+                uBuf.position(uStart + offset)
+                nv21[dst++] = vBuf.get()
+                nv21[dst++] = uBuf.get()
+            }
+        }
 
         val out = ByteArrayOutputStream()
-        val yuv = YuvImage(nv21, ImageFormat.NV21, image.width, image.height, null)
-        yuv.compressToJpeg(Rect(0, 0, image.width, image.height), JPEG_QUALITY, out)
+        val yuv = YuvImage(nv21, ImageFormat.NV21, width, height, null)
+        yuv.compressToJpeg(Rect(0, 0, width, height), JPEG_QUALITY, out)
         return out.toByteArray()
     }
 
@@ -396,9 +476,9 @@ class MainActivity : AppCompatActivity() {
         closeWsOnBackground()
 
         wsUrl = url
-        val uri = try { URI(url) } catch (e: Exception) { showError("Invalid URL"); return }
+        val uri = try { URI(url) } catch (e: Exception) { showError(getString(R.string.err_invalid_uri)); return }
 
-        updateStatus("Connecting…")
+        updateStatus(getString(R.string.status_connecting))
         Log.d(TAG, "Connecting to $url …")
 
         wsClient = PhoneCamWSClient(
@@ -406,7 +486,7 @@ class MainActivity : AppCompatActivity() {
             onOpenAction = {
                 runOnUiThread {
                     Log.d(TAG, "✓ WebSocket connected")
-                    updateStatus("Connected — streaming")
+                    updateStatus(getString(R.string.status_connected))
                     showConnectedUI()
                     startPingTimer()
                     sendHandshake()
@@ -431,7 +511,7 @@ class MainActivity : AppCompatActivity() {
             onErrorAction = { ex ->
                 runOnUiThread {
                     Log.e(TAG, "WebSocket error: ${ex?.message}")
-                    showError("Connection error: ${ex?.message}")
+                    showError(getString(R.string.err_connection, ex?.message ?: ""))
                 }
             }
         )
@@ -446,7 +526,7 @@ class MainActivity : AppCompatActivity() {
                     Log.d(TAG, "✅ Handshake acknowledged — streaming active")
                     isStreaming = true
                     val sessionId = json.optString("sessionId", "")
-                    Toast.makeText(this, "Streaming to desktop ✓", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, getString(R.string.toast_streaming_active), Toast.LENGTH_SHORT).show()
                     streamingService?.updateNotification("Desktop", currentResolution, currentFps)
                 }
                 "pong" -> {
